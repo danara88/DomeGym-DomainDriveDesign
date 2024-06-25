@@ -1,3 +1,6 @@
+using System.Reflection.Metadata.Ecma335;
+using ErrorOr;
+
 namespace DomeGym.Domain;
 
 public class Session
@@ -22,20 +25,68 @@ public class Session
     /// </summary>
     private readonly int _maxParticipants;
 
-    public Session(int maxParticipants, Guid trainerId, Guid? id = null)
+    /// <summary>
+    /// Represents the session date
+    /// </summary>
+    private readonly DateOnly _date;
+
+    /// <summary>
+    /// Represents the session start time
+    /// </summary>
+    private readonly TimeOnly _startTime;
+
+    /// <summary>
+    /// Represents the session end time
+    /// </summary>
+    private readonly TimeOnly _endTime;
+
+    public Session(
+        int maxParticipants,
+        DateOnly date,
+        TimeOnly startTime,
+        TimeOnly endTime,
+        Guid trainerId,
+        Guid? id = null)
     {
         _maxParticipants = maxParticipants;
+        _date = date;
+        _startTime = startTime;
+        _endTime = endTime;
         _id = id ?? Guid.NewGuid();
         _trainerId = trainerId;
     }
 
-    public void ReserveSpot(Participant participant)
+    public ErrorOr<Success> ReserveSpot(Participant participant)
     {
         if (_participantsIds.Count >= _maxParticipants)
         {
-            throw new Exception("Cannot have more reservations than participants.");
+            return SessionErrors.CannotHaveMoreReservationsThanParticipants;
         }
 
         _participantsIds.Add(participant.Id);
+
+        return Result.Success;
+    }
+
+    public ErrorOr<Success> CancelReservation(Participant participant, IDateTimeProvider dateTimeProvider)
+    {
+        if(isTooCloseToSession(dateTimeProvider.utcNow))
+        {
+            return SessionErrors.CannotCancelReservationTooCloseToSession;
+        }
+
+        if (!_participantsIds.Remove(participant.Id))
+        {
+            return Error.NotFound(description: "Participant not found.");
+        }
+
+        return Result.Success;
+    }
+
+    private bool isTooCloseToSession(DateTime utcNow)
+    {
+        const int MinHours = 24;
+        // session time - current time < 24 hours
+        return (_date.ToDateTime(_startTime) - utcNow).TotalHours < MinHours;
     }
 }
